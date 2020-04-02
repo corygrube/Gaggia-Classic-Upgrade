@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Adafruit_MAX31865.h>
-#include <AutoPID.h>
+#include <PID_v1.h>
 
 
 /* Digital Pins */
