@@ -3,32 +3,39 @@
 #include <PID_v1.h>
 
 
-/* Digital Pins */
-int steamPin = 1;       // Steam mode input
-int boilerCmdPin = 9;   // Boiler heater SSR (PWM)
-int CS = 10;            // MAX31865 SPI CS
-int SDI = 11;           // MAX31865 SPI SDI
-int SDO = 12;           // MAX31865 SPI SDO
-int CLK = 13;           // MAX31865 SPI CLK
+/* Pins */
+int pin_SteamMode = 1;      // Steam mode input pin
+int pin_BoilerCmd = 9;      // Boiler heater SSR pin (PWM)
+int pin_CS = 10;            // MAX31865 SPI CS pin
+int pin_SDI = 11;           // MAX31865 SPI SDI pin
+int pin_SDO = 12;           // MAX31865 SPI SDO pin
+int pin_CLK = 13;           // MAX31865 SPI CLK pin
 
-/* Analog Pins */
-// N/A
 
 /* Global Variables */
 // Inputs
-float boilerTemp;   // Boiler water temperature (DegF)
-float resLevel;     // Reservoir water level (% Full)
-// Outputs
-float boilerCmd;    // Boiler heater SSR command (0-100%)
-// MAX31865 (Boiler RTD board)
-Adafruit_MAX31865 boilerRtd = Adafruit_MAX31865(CS, SDI, SDO, CLK);     // Configures SPI (CS, SDI, SDO, CLK)
+float g_BoilerTemp;   // Boiler water temperature (DegF)
 
+// Outputs
+float g_BoilerCmd;    // Boiler heater SSR command (0-100%)
+
+// Adafruit MAX31865 (RTD sensor board)
+Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865 instance
+
+
+/* Function Declarations */
+void boilerTempInp();
+void boilerTempPID();
+
+
+/* Setup */
 void setup() {
   Serial.begin(115200);
-  boilerRtd.begin(MAX31865_3WIRE);  //MAX31865 initialization
+  g_BoilerRtd.begin(MAX31865_3WIRE);  //RTD initialization
 }
 
 
+/* Main Loop */
 void loop() {
   /* Inputs/Reads */
   boilerTempInp();
@@ -37,20 +44,20 @@ void loop() {
   // boilerTempPid();
 
   /* Outputs/Writes */
-  int boilerCmdRaw = boilerCmd / 100 * 255;   // Scaling from 0-100% to 0-255 for PWM
-  analogWrite(boilerCmdPin, boilerCmdRaw);
-
+  int boilerCmdRaw = g_BoilerCmd / 100 * 255;   // Scaling from 0-100% to 0-255 for PWM
+  analogWrite(pin_BoilerCmd, pin_BoilerCmd);
 }
 
 
+/* Function Definitions */
 void boilerTempInp() {
   // Boiler temperature read
   int rNominal = 100;                                                     // 0 DegC resistance of RTD (100 for PT100)
   int rRef = 430;                                                         // Resistance of Rref resistor on board (430 for PT100 board)
-  boilerTemp = boilerRtd.temperature(rNominal, rRef) * 1.8 + 32;          // Temperature measurement, converted to DegF
+  g_BoilerTemp = g_BoilerRtd.temperature(rNominal, rRef) * 1.8 + 32;      // Temperature measurement, converted to DegF
 
   //Boiler temperature fault check
-  byte fault = boilerRtd.readFault();                                     // Check MAX board for fault codes
+  byte fault = g_BoilerRtd.readFault();                                   // Check MAX board for fault codes
   if (fault) {                                                            // If fault is present, print fault code and description of fault
     Serial.print("RTD Fault 0x"); Serial.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
@@ -71,7 +78,7 @@ void boilerTempInp() {
     if (fault & MAX31865_FAULT_OVUV) {
       Serial.println("Under/Over voltage");
     }
-    boilerRtd.clearFault();
+    g_BoilerRtd.clearFault();
   }
   Serial.println();
 }
