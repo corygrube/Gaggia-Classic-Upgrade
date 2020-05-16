@@ -28,11 +28,12 @@ Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_
 // PID Instance (Input, Output, Setpoint, kP, kI, kD, POn Direction)
 PID g_BoilerPid = PID(&g_BoilerTemp, &g_BoilerCmd, &g_BoilerSp, 1, 1, 0, P_ON_M, DIRECT); // Boiler Temp PID
 
-/* Function Declarations */
-void boilerTempInp(), steamModeInp(), boilerTempControl();
 
-
-/* Setup */
+/* setup()*********************************************************************
+ * Enables Serial.
+ * Initializes boiler RTD instance (starts SPI I think).
+ * Sets IO pin modes
+ ******************************************************************************/
 void setup() {
   Serial.begin(9600);
   g_BoilerRtd.begin(MAX31865_3WIRE);  //RTD initialization
@@ -43,35 +44,25 @@ void setup() {
 }
 
 
-/* Main Loop */
-void loop() {
-  // Inputs/Reads
-  boilerTempInp();
-  steamModeInp();
-  
-
-  // Processing/Calculations
-  boilerTempControl();
-
-  // Monitoring
-  int boilerCmdPct = g_BoilerCmd / 255 * 100;   // Scaling from PWM 0-255 to 0-100% for Diagnostics
-
-  // Outputs/Writes
-  analogWrite(pin_BoilerCmd, g_BoilerCmd);
-}
-
-
-/* Function Definitions */
+/* boilerTempInp()********************************************************************
+ * Configures and reads RTD for boiler temperature. 
+ * Fault checks RTD sensor, prints faults to serial, and sets global bit accordingly
+ *************************************************************************************/
 void boilerTempInp() {
-  // Boiler temperature read
-  int rNominal = 100;                                                     // 0 DegC resistance of RTD (100 for PT100)
-  int rRef = 430;                                                         // Resistance of Rref resistor on board (430 for PT100 board)
-  g_BoilerTemp = g_BoilerRtd.temperature(rNominal, rRef) * 1.8 + 32;      // Temperature measurement, converted to DegF
+  // Variables needed for RTD read
+  int rNominal = 100;  // 0 DegC resistance of RTD (100 for PT100)
+  int rRef = 430;      // Resistance of Rref resistor on board (430 for PT100 board)
+  g_BoilerTemp = g_BoilerRtd.temperature(rNominal, rRef) * 1.8 + 32;  // Temperature measurement, converted to DegF
 
   //Boiler temperature fault check
-  byte fault = g_BoilerRtd.readFault();                                   // Check MAX board for fault codes
-  if (fault) {                                                            // If fault is present, print fault code and description of fault
-    g_BoilerTempFault = 1;                                                // Set global temp fault if one exists
+  byte fault = g_BoilerRtd.readFault();
+
+  // If fault is present, determine exact fault and set global bit
+  if (fault) {
+    // Set global temp fault
+    g_BoilerTempFault = 1;
+
+    // Print fault codes
     Serial.print("RTD Fault 0x"); Serial.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
       Serial.println("RTD High Threshold");
@@ -92,45 +83,76 @@ void boilerTempInp() {
       Serial.println("Under/Over voltage");
     }
     g_BoilerRtd.clearFault();
-  }
-  else g_BoilerTempFault = 0;                                             // Clear global temp fault if none exists
+  
   Serial.println();
+  }
+
+  // Clear global temp fault if none exists
+  else g_BoilerTempFault = 0;
 }
 
 
+/* steamModeInp()*************************************************************
+ * Debounce function to read the state of the steam mode switch
+ ******************************************************************************/
 void steamModeInp() {
-// read the state of the switch into a local variable:
+// Read the state of the switch into a local variable:
   int steamModeRaw = digitalRead(pin_SteamMode);
   
-  // check to see if you just pressed the button
+  // Check to see if you just pressed the button
   // (i.e. the input went from LOW to HIGH), and you've waited long enough
   // since the last press to ignore any noise:
 
   // If the switch changed, due to noise or pressing:
   if (steamModeRaw != g_SteamModeRawPrev) {
-    // reset the debouncing timer
+    // Mark the current time as the the most recent switch change.
     g_SteamModeDbPrev = millis();
   }
 
+  // Check if steamModeRaw is different than g_SteamMode.
+  // If so, check to see if debounce timer setpoint has been exceeded, meaning
+  // that switch has been in the current state for more ms than the Debounce SP
+  if (steamModeRaw != g_SteamMode) {
     if ((millis() - g_SteamModeDbPrev) > g_SteamModeDbCfg) {
-    // whatever the steamModeRaw is at, it's been there for longer than the debounce
-    // delay, so take it as the actual current state:
-
-    // if the mode has changed:
-      if (steamModeRaw != g_SteamMode) {
-        // set the debounced steam mode to the raw value
-        g_SteamMode = steamModeRaw;
-      }
+      g_SteamMode = steamModeRaw;
+    }
   }
 
-    // save the steamModeRaw. Next time through the loop, it'll be the g_SteamModeRawPrev:
+  // Save the steamModeRaw as g_SteamModeRawPrev for next scan. 
+  // This will be used to determine when the switch changes state.
   g_SteamModeRawPrev = steamModeRaw;
-
 }
 
+
+/* boilerTempControl()***************************************************
+ * Sets PID Temp SP based on boiler mode.
+ * Sets PID mode based on overall system health (fault/no fault).
+ * Executes PID.
+ **************************************************************************/
 void boilerTempControl() {
 // if (fdsa) 
 
 
 g_BoilerPid.Compute();
+}
+
+
+/* loop()**********************************************************************
+ * Sequencing function. Sequences read, computation, and write functions.
+ * [TBD] may trigger serial prints/handle serial inputs for diagnostics.
+ ******************************************************************************/
+void loop() {
+  // Inputs/Reads
+  boilerTempInp();
+  steamModeInp();
+  
+
+  // Processing/Calculations
+  boilerTempControl();
+
+  // Monitoring
+  int boilerCmdPct = g_BoilerCmd / 255 * 100;   // Scaling from PWM 0-255 to 0-100% for Diagnostics
+
+  // Outputs/Writes
+  analogWrite(pin_BoilerCmd, g_BoilerCmd);
 }
