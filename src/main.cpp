@@ -14,9 +14,19 @@ int pin_CLK = 13;           // MAX31865 SPI CLK pin
 
 /* Global Variables */
 double g_BoilerTemp;                     // Boiler water temperature (DegF)
+bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fault)
+
 double g_BoilerCmd;                      // Boiler heater SSR PWM command (0-255)
 double g_BoilerSp;                       // Boiler water temperature setpoint (DegF)
-bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fault)
+double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
+double g_BoilerSpSteam = 280;            // Boiler water temperature setpoint, steam (DegF)
+double g_BoilerKpEsp = 2;                // Boiler water temperature PID P gain, espresso
+double g_BoilerKiEsp = 1;                // Boiler water temperature PID I gain, espresso
+double g_BoilerKdEsp = 0;                // Boiler water temperature PID D gain, espresso
+double g_BoilerKpSteam = 2;              // Boiler water temperature PID P gain, steam
+double g_BoilerKiSteam = 1;              // Boiler water temperature PID I gain, steam
+double g_BoilerKdSteam = 0;              // Boiler water temperature PID D gain, steam
+
 bool g_SteamMode;                        // Machine Steam Mode (0=espresso mode, 1=steam mode)
 int g_SteamModeRawPrev;                  // value of Steam Mode pin on previous scan (1=steam mode)
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
@@ -130,8 +140,28 @@ void steamModeInp() {
  * Executes PID.
  **************************************************************************/
 void boilerTempControl() {
-// if (fdsa) 
+  // If there are no faults, run normal PID logic.
+  if (g_BoilerTempFault == 0) {
+    // Place PID into Auto
+    g_BoilerPid.SetMode(1);
+    
+    // If steam mode = 0 (espresso mode), use espresso SP/tuning params.
+    // Else, use steam SP/tuning params.
+    if (g_SteamMode == 0) {
+      g_BoilerSp = g_BoilerSpEsp;
+      g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
+    }
+    else {
+      g_BoilerSp = g_BoilerSpSteam;
+      g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
+    }
+  }
 
+  // If a fault exists, place PID into manual and set output to 0
+  else {
+    g_BoilerPid.SetMode(0);
+    g_BoilerCmd = 0;
+  }
 
 g_BoilerPid.Compute();
 }
