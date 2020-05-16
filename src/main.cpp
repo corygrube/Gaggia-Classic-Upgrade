@@ -28,6 +28,8 @@ double g_BoilerKiSteam = 1;              // Boiler water temperature PID I gain,
 double g_BoilerKdSteam = 0;              // Boiler water temperature PID D gain, steam
 
 bool g_SteamMode;                        // Machine Steam Mode (0=espresso mode, 1=steam mode)
+bool g_SteamModeOSR;                     // Machine Steam Mode Rising Oneshot
+bool g_SteamModeOSF;                     // Machine Steam Mode Falling Oneshot
 int g_SteamModeRawPrev;                  // value of Steam Mode pin on previous scan (1=steam mode)
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
@@ -106,7 +108,11 @@ void boilerTempInp() {
  * Debounce function to read the state of the steam mode switch
  ******************************************************************************/
 void steamModeInp() {
-// Read the state of the switch into a local variable:
+  // Reset Steam Mode oneshot bits
+  g_SteamModeOSR = 0;
+  g_SteamModeOSF = 0;
+  
+  // Read the state of the switch into a local variable:
   int steamModeRaw = digitalRead(pin_SteamMode);
   
   // Check to see if you just pressed the button
@@ -125,6 +131,14 @@ void steamModeInp() {
   if (steamModeRaw != g_SteamMode) {
     if ((millis() - g_SteamModeDbPrev) > g_SteamModeDbCfg) {
       g_SteamMode = steamModeRaw;
+      
+      // Set Oneshot rising/falling bits based on how the debounced value changed
+      if (g_SteamMode == 1) {
+        g_SteamModeOSR = 1;
+      }
+      else {
+        g_SteamModeOSF = 1;
+      }
     }
   }
 
@@ -142,7 +156,7 @@ void steamModeInp() {
 void boilerTempControl() {
   // If there are no faults, run normal PID logic.
   if (g_BoilerTempFault == 0) {
-    // Place PID into Auto
+    // Place PID into Auto (1)
     g_BoilerPid.SetMode(1);
     
     // If steam mode = 0 (espresso mode), use espresso SP/tuning params.
@@ -157,7 +171,7 @@ void boilerTempControl() {
     }
   }
 
-  // If a fault exists, place PID into manual and set output to 0
+  // If a fault exists, place PID into manual (0) and set output to 0
   else {
     g_BoilerPid.SetMode(0);
     g_BoilerCmd = 0;
