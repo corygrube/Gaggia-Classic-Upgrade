@@ -155,7 +155,7 @@ void steamModeInp() {
  **************************************************************************/
 void boilerTempControl() {
   // If a fault exists, place PID into manual (0) and set output to 0
-  if (g_BoilerTempFault == 1) {
+  if (g_BoilerTempFault) {
     g_BoilerPid.SetMode(0);
     g_BoilerCmd = 0;
   }
