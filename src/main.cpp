@@ -149,34 +149,37 @@ void steamModeInp() {
 
 
 /* boilerTempControl()***************************************************
- * Sets PID Temp SP based on boiler mode.
+ * Sets PID Temp SP based on boiler mode oneshot.
  * Sets PID mode based on overall system health (fault/no fault).
  * Executes PID.
  **************************************************************************/
 void boilerTempControl() {
-  // If there are no faults, run normal PID logic.
-  if (g_BoilerTempFault == 0) {
-    // Place PID into Auto (1)
-    g_BoilerPid.SetMode(1);
-    
-    // If steam mode = 0 (espresso mode), use espresso SP/tuning params.
-    // Else, use steam SP/tuning params.
-    if (g_SteamMode == 0) {
-      g_BoilerSp = g_BoilerSpEsp;
-      g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
-    }
-    else {
-      g_BoilerSp = g_BoilerSpSteam;
-      g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
-    }
-  }
-
   // If a fault exists, place PID into manual (0) and set output to 0
-  else {
+  if (g_BoilerTempFault == 1) {
     g_BoilerPid.SetMode(0);
     g_BoilerCmd = 0;
   }
+  
+  // If there are no faults, run normal PID logic.
+  else  {
+    // Place PID into Auto (1)
+    g_BoilerPid.SetMode(1);
 
+    // Steam Mode rising oneshot. Use steam SP/tuning params.
+    if (g_SteamModeOSR) {
+      g_BoilerSp = g_BoilerSpSteam;
+      g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
+    }
+      
+    // Steam Mode falling oneshot. Use espresso SP/tuning params.
+    if (g_SteamModeOSF) {
+      g_BoilerSp = g_BoilerSpEsp;
+      g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
+    }
+  }
+
+// PID compute logic - handles timing of PID execution.
+// Always called, even when in manual.
 g_BoilerPid.Compute();
 }
 
