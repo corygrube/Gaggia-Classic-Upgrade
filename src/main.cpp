@@ -36,7 +36,7 @@ unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was tog
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
 
 int g_LightCmd = 0;                      // Indicator light SSR PWM command (0-255)
-int g_LightMode = 0;                     // Indicator light mode (0=TBD, 1=TBD...)
+int g_LightMode = 0;                     // Indicator light mode (0=Fault, 1=Heating, 2=Ready, 3=Too hot)
 
 // Adafruit MAX31865 instance (RTD sensor board) (CS, SDI, SDO, CLK)
 Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865
@@ -48,7 +48,7 @@ PID g_BoilerPid = PID(&g_BoilerTemp, &g_BoilerCmd, &g_BoilerSp, 1, 1, 0, P_ON_M,
 /* setup()*********************************************************************
  * Enables Serial.
  * Initializes boiler RTD instance (starts SPI I think).
- * Sets IO pin modes
+ * Sets IO pin modes.
  ******************************************************************************/
 void setup() {
   Serial.begin(9600);
@@ -63,7 +63,7 @@ void setup() {
 
 /* boilerTempInp()********************************************************************
  * Configures and reads RTD for boiler temperature. 
- * Fault checks RTD sensor, prints faults to serial, and sets global bit accordingly
+ * Fault checks RTD sensor, prints faults to serial, and sets global bit accordingly.
  *************************************************************************************/
 void boilerTempInp() {
   // Variables needed for RTD read
@@ -191,11 +191,33 @@ g_BoilerPid.Compute();
 
 
 /* lightControl()**************************************************************
- * Controls machine indicator light depending on machine status. 
- * [TBD - different statuses available]
+ * Controls machine indicator light depending on machine status (light mode). 
+ * 0=Fault - triple blink, pause
+ * 1=Heating - fade on, fade off
+ * 2=Ready - Steady on
+ * 3=Too hot - sawtooth (fade on, cut off)
+ * Else=Fault
  ******************************************************************************/
 void lightControl() {
+  // 1=Heating
+  if (g_LightMode == 1) {
+    
+  }
 
+  // 2=Ready
+  else if (g_LightMode == 2) {
+    g_LightCmd = 255;
+  }
+
+  // 3=Too hot
+  else if (g_LightMode == 3) {
+    
+  }
+
+  // 0=Fault (or other Mo)
+  else {
+    
+  }
 }
 
 
