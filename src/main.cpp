@@ -42,11 +42,13 @@ int g_1000Msec;                          // Looping 1000 ms timer (0-999)
 int g_500Msec;                           // Looping 500 ms timer (0-499)
 int g_60Sec;                             // Looping 60 sec timer (0-59)
 
+char g_SerialInp;                        // Serial character input for debug
+
 // Adafruit MAX31865 instance (RTD sensor board) (CS, SDI, SDO, CLK)
 Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865
 
 // PID Instance (Input, Output, Setpoint, kP, kI, kD, POn Direction)
-PID g_BoilerPid = PID(&g_BoilerTemp, &g_BoilerCmd, &g_BoilerSp, 1, 1, 0, P_ON_M, DIRECT); // Boiler Temp PID
+PID g_BoilerPid = PID(&g_BoilerTemp, &g_BoilerCmd, &g_BoilerSp, 2, 1, 0, P_ON_M, DIRECT); // Boiler Temp PID
 
 
 /* setup()*********************************************************************
@@ -97,7 +99,7 @@ void boilerTempInp() {
     // Set global temp fault
     g_BoilerTempFault = 1;
 
-    // Print fault codes
+    // Print fault codes.
     Serial.print("RTD Fault 0x"); Serial.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
       Serial.println("RTD High Threshold");
@@ -119,7 +121,7 @@ void boilerTempInp() {
     }
     g_BoilerRtd.clearFault();
   
-  Serial.println();
+    Serial.println();
   }
 
   // Clear global temp fault if none exists
@@ -220,7 +222,7 @@ void lightControl() {
   // 1=Heating
   if (g_LightMode == 1) {
     // Linear triangle wave over the course of a second. Creates gentle pulse
-    if (g_1000Msec << 500) {
+    if (g_1000Msec < 500) {
       g_LightCmd = g_500Msec / 500 * 255;
     }
     else {
@@ -244,7 +246,13 @@ void lightControl() {
   // 0=Fault (or unknown mode)
   else {
     // Triple blink, repeated once per second. Blinks are 1/12 of a second.
-    if (0 <= g_1000Msec <= 83 || 167 <= g_1000Msec <= 250 || 333 <= g_1000Msec <= 417) {
+    if (0 <= g_1000Msec && g_1000Msec <= 83) {
+      g_LightCmd = 255;
+    }
+    else if (167 <= g_1000Msec && g_1000Msec <= 250) {
+      g_LightCmd = 255;
+    }
+    else if (333 <= g_1000Msec && g_1000Msec <= 417) {
       g_LightCmd = 255;
     }
     else {
@@ -253,19 +261,124 @@ void lightControl() {
   }
 
   // Bounds checking - force to min or max if out of normal range (0-255)
-  if (g_LightCmd << 0) {
+  if (g_LightCmd < 0) {
     g_LightCmd = 0;
   }
-  else if (g_LightCmd >> 255) {
+  else if (g_LightCmd > 255) {
     g_LightCmd = 0;
   }
 }
 
 
-/* loop()**********************************************************************
- * Sequencing function. Sequences read, computation, and write functions.
+/* serialInp()****************************************************************
+ * Input commands via serial.
+ * a, b, c modify espresso PID tuning params respectively.
+ * x, y, z modify steam PID tuning params respectively.
+ * Lowercase decreases param by 0.1, while uppercase increase it by 0.1.
+ * If param < 0, param is reset to 0.
+ * s to set parameters within PID, r to read parameters.
+ *****************************************************************************/
+void serialInp() {
+  if (Serial.available() > 0) {
+    g_SerialInp = Serial.read();
+  
+
+    switch (g_SerialInp) {
+    // Increase/decrease espresso mode params
+    case 'a':
+      g_BoilerKpEsp = g_BoilerKpEsp - 0.1;
+      break;
+    
+    case 'A':
+      g_BoilerKpEsp = g_BoilerKpEsp + 0.1;
+      break;
+
+    case 'b':
+      g_BoilerKiEsp = g_BoilerKiEsp - 0.1;
+      break;
+    
+    case 'B':
+      g_BoilerKiEsp = g_BoilerKiEsp + 0.1;
+      break;
+
+    case 'c':
+      g_BoilerKdEsp = g_BoilerKdEsp - 0.1;
+      break;
+    
+    case 'C':
+      g_BoilerKdEsp = g_BoilerKdEsp + 0.1;
+      break;
+    
+    // Increase/decrease steam mode params
+    case 'x':
+      g_BoilerKpSteam = g_BoilerKpSteam - 0.1;
+      break;
+    
+    case 'X':
+      g_BoilerKpSteam = g_BoilerKpSteam + 0.1;
+      break;
+
+    case 'y':
+      g_BoilerKiSteam = g_BoilerKiSteam - 0.1;
+      break;
+    
+    case 'Y':
+      g_BoilerKiSteam = g_BoilerKiSteam + 0.1;
+      break;
+
+    case 'z':
+      g_BoilerKdSteam = g_BoilerKdSteam - 0.1;
+      break;
+    
+    case 'Z':
+      g_BoilerKdSteam = g_BoilerKdSteam + 0.1;
+      break;
+    
+    // Set tuning params in PID based on what mode is active.
+    case 's':
+      if (g_SteamMode){
+        g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
+      }
+      else {
+        g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
+      }
+      break;
+
+    // Read both live and stored parameters in the PID and in stored variables
+    case 'r':
+      int kp = g_BoilerPid.GetKp();
+      int ki = g_BoilerPid.GetKi();
+      int kd = g_BoilerPid.GetKd();
+      
+      Serial.println("Live Parameters:");
+      Serial.print("P: ");  Serial.println(kp);
+      Serial.print("I: ");  Serial.println(ki);
+      Serial.print("D: ");  Serial.println(kd);
+
+      Serial.println("Stored Steam Mode Parameters:");
+      Serial.print("P: ");  Serial.println(g_BoilerKpSteam);
+      Serial.print("I: ");  Serial.println(g_BoilerKiSteam);
+      Serial.print("D: ");  Serial.println(g_BoilerKdSteam);
+
+      Serial.println("Stored Espresso Mode Parameters:");
+      Serial.print("P: ");  Serial.println(g_BoilerKpEsp);
+      Serial.print("I: ");  Serial.println(g_BoilerKiEsp);
+      Serial.print("D: ");  Serial.println(g_BoilerKdEsp);
+      break;
+
+    default:
+      Serial.println("Invalid serial input.");
+      break;
+    }
+  }
+}
+
+
+/* loop()*********************************************************************
+ * Sequencing function (main loop).
+ * Sequences read, computation, and write functions.
  * [TBD] may trigger serial prints/handle serial inputs for diagnostics.
- ******************************************************************************/
+ *****************************************************************************/
 void loop() {
   // Utilities
   timing();
@@ -273,6 +386,7 @@ void loop() {
   // Inputs/Reads
   boilerTempInp();
   steamModeInp();
+  serialInp();
   
   // Processing/Calculations
   
