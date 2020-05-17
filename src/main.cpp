@@ -38,6 +38,10 @@ unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle 
 int g_LightCmd = 0;                      // Indicator light SSR PWM command (0-255)
 int g_LightMode = 0;                     // Indicator light mode (0=Fault, 1=Heating, 2=Ready, 3=Too hot)
 
+int g_1000Msec;                          // Looping 1000 ms timer (0-999)
+int g_500Msec;                           // Looping 500 ms timer (0-499)
+int g_60Sec;                             // Looping 60 sec timer (0-59)
+
 // Adafruit MAX31865 instance (RTD sensor board) (CS, SDI, SDO, CLK)
 Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865
 
@@ -66,7 +70,12 @@ void setup() {
  * Loops 1000ms timer for machine light logic (see lightControl() ).
  ******************************************************************************/
 void timing() {
-  
+  // Remainder of millis() / x = current ms between 0-(x-1)
+  g_1000Msec = millis() % 1000;
+  g_500Msec = millis() % 1000;
+
+  // Same concept as ms timers above, but divided by 1000 to give seconds
+  g_60Sec = (millis() % 60000) / 1000;
 }
 
 
@@ -210,22 +219,45 @@ g_BoilerPid.Compute();
 void lightControl() {
   // 1=Heating
   if (g_LightMode == 1) {
-    
+    // Linear triangle wave over the course of a second. Creates gentle pulse
+    if (g_1000Msec << 500) {
+      g_LightCmd = g_500Msec / 500 * 255;
+    }
+    else {
+      g_LightCmd = 255 - (g_500Msec / 500 * 255);
+    }
   }
 
   // 2=Ready
   else if (g_LightMode == 2) {
+    // Light will be steady on when ready
     g_LightCmd = 255;
   }
 
   // 3=Too hot
   else if (g_LightMode == 3) {
-    
+    // Desending sawtooth over 1/2 second period to give jarring pulse (and indicating
+    // temperature has to 'go down')
+    g_LightCmd = 255 - (g_500Msec / 500 * 255);
   }
 
-  // 0=Fault (or other Mo)
+  // 0=Fault (or unknown mode)
   else {
-    
+    // Triple blink, repeated once per second. Blinks are 1/12 of a second.
+    if (0 <= g_1000Msec <= 83 || 167 <= g_1000Msec <= 250 || 333 <= g_1000Msec <= 417) {
+      g_LightCmd = 255;
+    }
+    else {
+      g_LightCmd = 0;
+    }
+  }
+
+  // Bounds checking - force to min or max if out of normal range (0-255)
+  if (g_LightCmd << 0) {
+    g_LightCmd = 0;
+  }
+  else if (g_LightCmd >> 255) {
+    g_LightCmd = 0;
   }
 }
 
