@@ -4,20 +4,21 @@
 
 
 /* Pins */
-int pin_SteamMode = 1;      // Steam mode input pin
-int pin_BoilerCmd = 9;      // Boiler heater SSR pin (PWM)
-int pin_CS = 10;            // MAX31865 SPI CS pin
-int pin_SDI = 11;           // MAX31865 SPI SDI pin
-int pin_SDO = 12;           // MAX31865 SPI SDO pin
-int pin_CLK = 13;           // MAX31865 SPI CLK pin
+const int pin_SteamMode = 2;      // Steam mode input pin
+const int pin_LightCmd = 3;       // Indicator light SSR pin (PWM)
+const int pin_BoilerCmd = 9;      // Boiler heater SSR pin (PWM)
+const int pin_CS = 10;            // MAX31865 SPI CS pin
+const int pin_SDI = 11;           // MAX31865 SPI SDI pin
+const int pin_SDO = 12;           // MAX31865 SPI SDO pin
+const int pin_CLK = 13;           // MAX31865 SPI CLK pin
 
 
 /* Global Variables */
 double g_BoilerTemp;                     // Boiler water temperature (DegF)
 bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fault)
 
-double g_BoilerCmd;                      // Boiler heater SSR PWM command (0-255)
-double g_BoilerSp;                       // Boiler water temperature setpoint (DegF)
+double g_BoilerCmd = 0;                  // Boiler heater SSR PWM command (0-255)
+double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
 double g_BoilerSpSteam = 280;            // Boiler water temperature setpoint, steam (DegF)
 double g_BoilerKpEsp = 2;                // Boiler water temperature PID P gain, espresso
@@ -33,6 +34,9 @@ bool g_SteamModeOSF;                     // Machine Steam Mode Falling Oneshot
 int g_SteamModeRawPrev;                  // value of Steam Mode pin on previous scan (1=steam mode)
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
+
+int g_LightCmd = 0;                      // Indicator light SSR PWM command (0-255)
+int g_LightMode = 0;                     // Indicator light mode (0=TBD, 1=TBD...)
 
 // Adafruit MAX31865 instance (RTD sensor board) (CS, SDI, SDO, CLK)
 Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865
@@ -52,6 +56,7 @@ void setup() {
   
   // Pin configurations
   pinMode(pin_SteamMode, INPUT);
+  pinMode(pin_LightCmd, OUTPUT);
   pinMode(pin_BoilerCmd, OUTPUT);
 }
 
@@ -105,7 +110,8 @@ void boilerTempInp() {
 
 
 /* steamModeInp()*************************************************************
- * Debounce function to read the state of the steam mode switch
+ * Debounce function to read the state of the steam mode switch.
+ * Sets miscellaneous oneshot bits for use elsewhere in program.
  ******************************************************************************/
 void steamModeInp() {
   // Reset Steam Mode oneshot bits
@@ -184,6 +190,15 @@ g_BoilerPid.Compute();
 }
 
 
+/* lightControl()**************************************************************
+ * Controls machine indicator light depending on machine status. 
+ * [TBD - different statuses available]
+ ******************************************************************************/
+void lightControl() {
+
+}
+
+
 /* loop()**********************************************************************
  * Sequencing function. Sequences read, computation, and write functions.
  * [TBD] may trigger serial prints/handle serial inputs for diagnostics.
@@ -193,13 +208,15 @@ void loop() {
   boilerTempInp();
   steamModeInp();
   
-
   // Processing/Calculations
   boilerTempControl();
+  lightControl();
 
   // Monitoring
   int boilerCmdPct = g_BoilerCmd / 255 * 100;   // Scaling from PWM 0-255 to 0-100% for Diagnostics
+  int lightCmdPct = g_LightCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
 
   // Outputs/Writes
   analogWrite(pin_BoilerCmd, g_BoilerCmd);
+  analogWrite(pin_LightCmd, g_LightCmd);
 }
