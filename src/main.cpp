@@ -61,6 +61,15 @@ void setup() {
 }
 
 
+/* timing()*********************************************************************
+ * Tracks time for miscellaneous oneshots.
+ * Loops 1000ms timer for machine light logic (see lightControl() ).
+ ******************************************************************************/
+void timing() {
+  
+}
+
+
 /* boilerTempInp()********************************************************************
  * Configures and reads RTD for boiler temperature. 
  * Fault checks RTD sensor, prints faults to serial, and sets global bit accordingly.
@@ -226,11 +235,15 @@ void lightControl() {
  * [TBD] may trigger serial prints/handle serial inputs for diagnostics.
  ******************************************************************************/
 void loop() {
+  // Utilities
+  timing();
+  
   // Inputs/Reads
   boilerTempInp();
   steamModeInp();
   
   // Processing/Calculations
+  
   boilerTempControl();
   lightControl();
 
