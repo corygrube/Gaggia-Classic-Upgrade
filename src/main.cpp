@@ -19,6 +19,7 @@ bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fa
 
 double g_BoilerCmd = 0;                  // Boiler heater SSR PWM command (0-255)
 double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
+double g_BoilerSpDb = 1.5;               // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
 double g_BoilerSpSteam = 280;            // Boiler water temperature setpoint, steam (DegF)
 double g_BoilerKpEsp = 2;                // Boiler water temperature PID P gain, espresso
@@ -161,9 +162,11 @@ void steamModeInp() {
       // Set Oneshot rising/falling bits based on how the debounced value changed
       if (g_SteamMode == 1) {
         g_SteamModeOSR = 1;
+        Serial.println("Steam Mode Enabled.");
       }
       else {
         g_SteamModeOSF = 1;
+        Serial.println("Espresso Mode Enabled.");
       }
     }
   }
@@ -180,7 +183,8 @@ void steamModeInp() {
  * Executes PID.
  **************************************************************************/
 void boilerTempControl() {
-  // If a fault exists, place PID into manual (0) and set output to 0
+  // If a fault exists, place PID into manual (0) and set output to 0.
+  // Set Light Mode to 0 to indicate fault.
   if (g_BoilerTempFault) {
     g_BoilerPid.SetMode(0);
     g_BoilerCmd = 0;
@@ -204,9 +208,27 @@ void boilerTempControl() {
     }
   }
 
-// PID compute logic - handles timing of PID execution.
-// Always called, even when in manual.
-g_BoilerPid.Compute();
+  // PID compute logic - handles timing of PID execution.
+  // Always called, even when in manual.
+  g_BoilerPid.Compute();
+
+  // Light Mode control
+  // Set Light Mode to 0 if there is a hardware fault.
+  if (g_BoilerTempFault) {
+    g_LightMode = 0;
+  }
+  // Set Light Mode to 1 if temp is less than (SP - SP Deadband) (too cold)
+  else if (g_BoilerTemp < (g_BoilerSp - g_BoilerSpDb)) {
+    g_LightMode = 1;
+  }
+  // Set Light Mode to 3 if temp is greater than (SP + SP Deadband) (too hot)
+  else if (g_BoilerTemp > (g_BoilerSp + g_BoilerSpDb)) {
+    g_LightMode = 3;
+  }
+  // Set Light Mode to 2 if temp is somewhere in between (correct temp)
+  else {
+    g_LightMode = 2;
+  }
 }
 
 
@@ -336,7 +358,7 @@ void serialInp() {
     
     // Set tuning params in PID based on what mode is active.
     case 's':
-      if (g_SteamMode){
+      if (g_SteamMode) {
         g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
       }
       else {

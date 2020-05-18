@@ -1,0 +1,3 @@
+Add serial output of command values (boilerpct, light pct)
+Identify possible solutions for trending PID
+Test?
