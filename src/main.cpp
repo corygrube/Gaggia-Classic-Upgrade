@@ -1,12 +1,14 @@
 #include <Arduino.h>
 #include <Adafruit_MAX31865.h>
 #include <PID_v1.h>
+#include <Plotter.h>
 
 
 /* Pins */
 const int pin_SteamMode = 2;      // Steam mode input pin
-const int pin_LightCmd = 3;       // Indicator light SSR pin (PWM)
-const int pin_BoilerCmd = 9;      // Boiler heater SSR pin (PWM)
+const int pin_BoilerCmd = 5;      // Boiler heater SSR pin (PWM)
+const int pin_LightCmd = 6;       // Indicator light SSR pin (PWM)
+const int pin_PumpStat = 8;       // Pump Run Status input pin
 const int pin_CS = 10;            // MAX31865 SPI CS pin
 const int pin_SDI = 11;           // MAX31865 SPI SDI pin
 const int pin_SDO = 12;           // MAX31865 SPI SDO pin
@@ -18,6 +20,7 @@ double g_BoilerTemp;                     // Boiler water temperature (DegF)
 bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fault)
 
 double g_BoilerCmd = 0;                  // Boiler heater SSR PWM command (0-255)
+double g_BoilerCmdPct = 0;               // Boiler heater SSR command percent (0-100%)
 double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
 double g_BoilerSpDb = 1.5;               // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
@@ -42,8 +45,12 @@ int g_LightMode = 0;                     // Indicator light mode (0=Fault, 1=Hea
 int g_1000Msec;                          // Looping 1000 ms timer (0-999)
 int g_500Msec;                           // Looping 500 ms timer (0-499)
 int g_60Sec;                             // Looping 60 sec timer (0-59)
+bool g_1SecOS = 0;                       // Oneshot that fires every second at 0ms
+bool g_1SecOSRes = 0;                    // Oneshot Reset. True when OS has already fired.
 
 char g_SerialInp;                        // Serial character input for debug
+
+Plotter g_Plot1;                         // PID plot
 
 // Adafruit MAX31865 instance (RTD sensor board) (CS, SDI, SDO, CLK)
 Adafruit_MAX31865 g_BoilerRtd = Adafruit_MAX31865(pin_CS, pin_SDI, pin_SDO, pin_CLK);     // Boiler RTD MAX31865
@@ -63,8 +70,18 @@ void setup() {
   
   // Pin configurations
   pinMode(pin_SteamMode, INPUT);
+  pinMode(pin_PumpStat, INPUT);
   pinMode(pin_LightCmd, OUTPUT);
   pinMode(pin_BoilerCmd, OUTPUT);
+
+  // Plotter setup
+  int points = 5000; // Number of points to be retained on plot
+  g_Plot1.Begin();   // PID plot
+  g_Plot1.AddTimeGraph(
+    "Boiler Temperature", points, 
+    "PV", g_BoilerTemp, 
+    "SP", g_BoilerSp, 
+    "CV", g_BoilerCmdPct);
 }
 
 
@@ -75,10 +92,24 @@ void setup() {
 void timing() {
   // Remainder of millis() / x = current ms between 0-(x-1)
   g_1000Msec = millis() % 1000;
-  g_500Msec = millis() % 1000;
+  g_500Msec = millis() % 500;
 
   // Same concept as ms timers above, but divided by 1000 to give seconds
   g_60Sec = (millis() % 60000) / 1000;
+
+  // Oneshot that fires every second at 0ms
+  if (g_1000Msec == 0 && !g_1SecOSRes) {
+    g_1SecOS = 1;
+    g_1SecOSRes = 1;
+  }
+  else if (g_1000Msec == 0 && g_1SecOSRes) {
+    g_1SecOS = 0;
+  }
+  else if (g_1000Msec != 0) {
+    g_1SecOS = 0;
+    g_1SecOSRes = 0;
+  }
+
 }
 
 
@@ -409,15 +440,17 @@ void loop() {
   boilerTempInp();
   steamModeInp();
   serialInp();
-  
+
   // Processing/Calculations
-  
   boilerTempControl();
   lightControl();
 
   // Monitoring
-  int boilerCmdPct = g_BoilerCmd / 255 * 100;   // Scaling from PWM 0-255 to 0-100% for Diagnostics
+  g_BoilerCmdPct = g_BoilerCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
   int lightCmdPct = g_LightCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
+  if (g_1SecOS) {
+    g_Plot1.Plot();    // Plot data once per second
+  }
 
   // Outputs/Writes
   analogWrite(pin_BoilerCmd, g_BoilerCmd);
