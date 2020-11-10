@@ -39,12 +39,10 @@ int g_SteamModeRawPrev;                  // value of Steam Mode pin on previous 
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
 
-int g_LightCmd = 0;                      // Indicator light SSR PWM command (0-255)
+bool g_LightCmd = 0;                     // Indicator light SSR digital command (0=Off 1=On)
 int g_LightMode = 0;                     // Indicator light mode (0=Fault, 1=Heating, 2=Ready, 3=Too hot)
 
 int g_1000Msec;                          // Looping 1000 ms timer (0-999)
-int g_500Msec;                           // Looping 500 ms timer (0-499)
-int g_60Sec;                             // Looping 60 sec timer (0-59)
 bool g_1SecOS = 0;                       // Oneshot that fires every second at 0ms
 bool g_1SecOSRes = 0;                    // Oneshot Reset. True when OS has already fired.
 
@@ -92,10 +90,6 @@ void setup() {
 void timing() {
   // Remainder of millis() / x = current ms between 0-(x-1)
   g_1000Msec = millis() % 1000;
-  g_500Msec = millis() % 500;
-
-  // Same concept as ms timers above, but divided by 1000 to give seconds
-  g_60Sec = (millis() % 60000) / 1000;
 
   // Oneshot that fires every second at 0ms
   if (g_1000Msec == 0 && !g_1SecOSRes) {
@@ -266,59 +260,55 @@ void boilerTempControl() {
 /* lightControl()**************************************************************
  * Controls machine indicator light depending on machine status (light mode). 
  * 0=Fault - triple blink, pause
- * 1=Heating - fade on, fade off
+ * 1=Heating - On for 1/2 sec, off for 1/2 sec
  * 2=Ready - Steady on
- * 3=Too hot - sawtooth (fade on, cut off)
+ * 3=Too hot - On for 3/4 sec, off for 1/4 sec
  * Else=Fault
  ******************************************************************************/
 void lightControl() {
   // 1=Heating
   if (g_LightMode == 1) {
-    // Linear triangle wave over the course of a second. Creates gentle pulse
+    // Equal on/off blinking over the course of a second
     if (g_1000Msec < 500) {
-      g_LightCmd = g_500Msec / 500 * 255;
+      g_LightCmd = true;
     }
     else {
-      g_LightCmd = 255 - (g_500Msec / 500 * 255);
+      g_LightCmd = false;
     }
   }
 
   // 2=Ready
   else if (g_LightMode == 2) {
     // Light will be steady on when ready
-    g_LightCmd = 255;
+    g_LightCmd = true;
   }
 
   // 3=Too hot
   else if (g_LightMode == 3) {
-    // Desending sawtooth over 1/2 second period to give jarring pulse (and indicating
-    // temperature has to 'go down')
-    g_LightCmd = 255 - (g_500Msec / 500 * 255);
+    // On for 3/4 sec, off for 1/4 sec
+    if (g_1000Msec < 750) {
+      g_LightCmd = true;
+    }
+    else {
+      g_LightCmd = false;
+    }
   }
 
   // 0=Fault (or unknown mode)
   else {
     // Triple blink, repeated once per second. Blinks are 1/12 of a second.
     if (0 <= g_1000Msec && g_1000Msec <= 83) {
-      g_LightCmd = 255;
+      g_LightCmd = true;
     }
     else if (167 <= g_1000Msec && g_1000Msec <= 250) {
-      g_LightCmd = 255;
+      g_LightCmd = true;
     }
     else if (333 <= g_1000Msec && g_1000Msec <= 417) {
-      g_LightCmd = 255;
+      g_LightCmd = true;
     }
     else {
-      g_LightCmd = 0;
+      g_LightCmd = false;
     }
-  }
-
-  // Bounds checking - force to min or max if out of normal range (0-255)
-  if (g_LightCmd < 0) {
-    g_LightCmd = 0;
-  }
-  else if (g_LightCmd > 255) {
-    g_LightCmd = 0;
   }
 }
 
@@ -398,7 +388,7 @@ void serialInp() {
       break;
 
     // Read both live and stored parameters in the PID and in stored variables
-    case 'r':
+    case 'r': {
       int kp = g_BoilerPid.GetKp();
       int ki = g_BoilerPid.GetKi();
       int kd = g_BoilerPid.GetKd();
@@ -417,6 +407,7 @@ void serialInp() {
       Serial.print("P: ");  Serial.println(g_BoilerKpEsp);
       Serial.print("I: ");  Serial.println(g_BoilerKiEsp);
       Serial.print("D: ");  Serial.println(g_BoilerKdEsp);
+      }
       break;
 
     default:
@@ -447,12 +438,11 @@ void loop() {
 
   // Monitoring
   g_BoilerCmdPct = g_BoilerCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
-  int lightCmdPct = g_LightCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
   if (g_1SecOS) {
     g_Plot1.Plot();    // Plot data once per second
   }
 
   // Outputs/Writes
   analogWrite(pin_BoilerCmd, g_BoilerCmd);
-  analogWrite(pin_LightCmd, g_LightCmd);
+  digitalWrite(pin_LightCmd, g_LightCmd);
 }
