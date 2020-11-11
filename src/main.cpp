@@ -33,9 +33,9 @@ double g_BoilerKiSteam = 1;              // Boiler water temperature PID I gain,
 double g_BoilerKdSteam = 0;              // Boiler water temperature PID D gain, steam
 
 bool g_SteamMode;                        // Machine Steam Mode (0=espresso mode, 1=steam mode)
-bool g_SteamModeOSR;                     // Machine Steam Mode Rising Oneshot
-bool g_SteamModeOSF;                     // Machine Steam Mode Falling Oneshot
-int g_SteamModeRawPrev;                  // value of Steam Mode pin on previous scan (1=steam mode)
+bool g_SteamModeOSR = 0;                 // Machine Steam Mode Rising Oneshot
+bool g_SteamModeOSF = 0;                 // Machine Steam Mode Falling Oneshot
+bool g_SteamModeRawPrev;                 // value of Steam Mode pin on previous scan (1=steam mode)
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
 
@@ -47,6 +47,8 @@ bool g_1SecOS = 0;                       // Oneshot that fires every second at 0
 bool g_1SecOSRes = 0;                    // Oneshot Reset. True when OS has already fired.
 
 char g_SerialInp;                        // Serial character input for debug
+
+bool g_FirstScan = 1;                    // First scan check. Used to run init logic.
 
 Plotter g_Plot1;                         // PID plot
 
@@ -63,8 +65,8 @@ PID g_BoilerPid = PID(&g_BoilerTemp, &g_BoilerCmd, &g_BoilerSp, 2, 1, 0, P_ON_M,
  * Sets IO pin modes.
  ******************************************************************************/
 void setup() {
-  Serial.begin(9600);
-  g_BoilerRtd.begin(MAX31865_3WIRE);  //RTD initialization
+  // Serial.begin(115200);              // Serial initialized in plotter. 
+  g_BoilerRtd.begin(MAX31865_3WIRE);  // RTD initialization
   
   // Pin configurations
   pinMode(pin_SteamMode, INPUT);
@@ -126,6 +128,7 @@ void boilerTempInp() {
     g_BoilerTempFault = 1;
 
     // Print fault codes.
+    /* // Serial used by plotter - serial prints commented out. 
     Serial.print("RTD Fault 0x"); Serial.println(fault, HEX);
     if (fault & MAX31865_FAULT_HIGHTHRESH) {
       Serial.println("RTD High Threshold");
@@ -145,9 +148,10 @@ void boilerTempInp() {
     if (fault & MAX31865_FAULT_OVUV) {
       Serial.println("Under/Over voltage");
     }
+    */
     g_BoilerRtd.clearFault();
   
-    Serial.println();
+    // Serial.println(); // Serial used by plotter - serial prints commented out.
   }
 
   // Clear global temp fault if none exists
@@ -165,8 +169,8 @@ void steamModeInp() {
   g_SteamModeOSF = 0;
   
   // Read the state of the switch into a local variable:
-  int steamModeRaw = digitalRead(pin_SteamMode);
-  
+  bool steamModeRaw = digitalRead(pin_SteamMode);
+
   // Check to see if you just pressed the button
   // (i.e. the input went from LOW to HIGH), and you've waited long enough
   // since the last press to ignore any noise:
@@ -187,15 +191,14 @@ void steamModeInp() {
       // Set Oneshot rising/falling bits based on how the debounced value changed
       if (g_SteamMode == 1) {
         g_SteamModeOSR = 1;
-        Serial.println("Steam Mode Enabled.");
+        // Serial.println("Steam Mode Enabled.");     // Serial used by plotter - serial prints commented out.
       }
       else {
         g_SteamModeOSF = 1;
-        Serial.println("Espresso Mode Enabled.");
+        // Serial.println("Espresso Mode Enabled.");  // Serial used by plotter - serial prints commented out.
       }
     }
   }
-
   // Save the steamModeRaw as g_SteamModeRawPrev for next scan. 
   // This will be used to determine when the switch changes state.
   g_SteamModeRawPrev = steamModeRaw;
@@ -220,14 +223,14 @@ void boilerTempControl() {
     // Place PID into Auto (1)
     g_BoilerPid.SetMode(1);
 
-    // Steam Mode rising oneshot. Use steam SP/tuning params.
-    if (g_SteamModeOSR) {
+    // Steam Mode. Use steam SP/tuning params.
+    if (g_SteamMode) {
       g_BoilerSp = g_BoilerSpSteam;
       g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
     }
       
-    // Steam Mode falling oneshot. Use espresso SP/tuning params.
-    if (g_SteamModeOSF) {
+    // Espresso Mode. Use espresso SP/tuning params.
+    if (!g_SteamMode) {
       g_BoilerSp = g_BoilerSpEsp;
       g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
     }
@@ -322,6 +325,7 @@ void lightControl() {
  * s to set parameters within PID, r to read parameters.
  *****************************************************************************/
 void serialInp() {
+  /* // Serial used by plotter - serial logic commented out.
   if (Serial.available() > 0) {
     g_SerialInp = Serial.read();
   
@@ -414,7 +418,7 @@ void serialInp() {
       Serial.println("Invalid serial input.");
       break;
     }
-  }
+  } */
 }
 
 
@@ -438,11 +442,12 @@ void loop() {
 
   // Monitoring
   g_BoilerCmdPct = g_BoilerCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
-  if (g_1SecOS) {
-    g_Plot1.Plot();    // Plot data once per second
-  }
+  g_Plot1.Plot();    // Plot data once per second
 
   // Outputs/Writes
   analogWrite(pin_BoilerCmd, g_BoilerCmd);
   digitalWrite(pin_LightCmd, g_LightCmd);
+
+  // First scan reset
+  g_FirstScan = 0;
 }
