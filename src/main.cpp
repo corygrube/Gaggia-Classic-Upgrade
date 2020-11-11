@@ -202,6 +202,14 @@ void steamModeInp() {
   // Save the steamModeRaw as g_SteamModeRawPrev for next scan. 
   // This will be used to determine when the switch changes state.
   g_SteamModeRawPrev = steamModeRaw;
+
+  // On program first scan, force machine to espresso mode
+  // (easier than getting the above logic to set appropriate OSR/OSF bits on startup)
+  if (g_FirstScan) {
+    g_SteamMode = 0;
+    g_SteamModeOSR = 0;
+    g_SteamModeOSF = 1;
+  }
 }
 
 
@@ -223,14 +231,14 @@ void boilerTempControl() {
     // Place PID into Auto (1)
     g_BoilerPid.SetMode(1);
 
-    // Steam Mode. Use steam SP/tuning params.
-    if (g_SteamMode) {
+    // Steam Mode (oneshot rising). Use steam SP/tuning params.
+    if (g_SteamModeOSR) {
       g_BoilerSp = g_BoilerSpSteam;
       g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
     }
       
-    // Espresso Mode. Use espresso SP/tuning params.
-    if (!g_SteamMode) {
+    // Espresso Mode (onehsot falling). Use espresso SP/tuning params.
+    if (!g_SteamModeOSF) {
       g_BoilerSp = g_BoilerSpEsp;
       g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
     }
