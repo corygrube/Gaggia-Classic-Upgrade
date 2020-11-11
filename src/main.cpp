@@ -32,7 +32,7 @@ double g_BoilerKpSteam = 2;              // Boiler water temperature PID P gain,
 double g_BoilerKiSteam = 1;              // Boiler water temperature PID I gain, steam
 double g_BoilerKdSteam = 0;              // Boiler water temperature PID D gain, steam
 
-bool g_SteamMode;                        // Machine Steam Mode (0=espresso mode, 1=steam mode)
+bool g_SteamMode = 0;                    // Machine Steam Mode (0=espresso mode, 1=steam mode)
 bool g_SteamModeOSR = 0;                 // Machine Steam Mode Rising Oneshot
 bool g_SteamModeOSF = 0;                 // Machine Steam Mode Falling Oneshot
 bool g_SteamModeRawPrev;                 // value of Steam Mode pin on previous scan (1=steam mode)
