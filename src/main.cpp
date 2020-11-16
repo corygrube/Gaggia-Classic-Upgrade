@@ -24,13 +24,13 @@ double g_BoilerCmdPct = 0;               // Boiler heater SSR command percent (0
 double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
 double g_BoilerSpDb = 1.5;               // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
-double g_BoilerSpSteam = 280;            // Boiler water temperature setpoint, steam (DegF)
-double g_BoilerKpEsp = 2;                // Boiler water temperature PID P gain, espresso
-double g_BoilerKiEsp = 1;                // Boiler water temperature PID I gain, espresso
-double g_BoilerKdEsp = 0;                // Boiler water temperature PID D gain, espresso
-double g_BoilerKpSteam = 2;              // Boiler water temperature PID P gain, steam
-double g_BoilerKiSteam = 1;              // Boiler water temperature PID I gain, steam
-double g_BoilerKdSteam = 0;              // Boiler water temperature PID D gain, steam
+double g_BoilerSpSteam = 255;            // Boiler water temperature setpoint, steam (DegF)
+double g_BoilerKpEsp = 10;                // Boiler water temperature PID P gain, espresso
+double g_BoilerKiEsp = 0.3;                // Boiler water temperature PID I gain, espresso
+double g_BoilerKdEsp = 1;                // Boiler water temperature PID D gain, espresso
+double g_BoilerKpSteam = 10;              // Boiler water temperature PID P gain, steam
+double g_BoilerKiSteam = 0.3;              // Boiler water temperature PID I gain, steam
+double g_BoilerKdSteam = 1;              // Boiler water temperature PID D gain, steam
 
 bool g_SteamMode = 0;                    // Machine Steam Mode (0=espresso mode, 1=steam mode)
 bool g_SteamModeOSR = 0;                 // Machine Steam Mode Rising Oneshot
@@ -238,7 +238,7 @@ void boilerTempControl() {
     }
       
     // Espresso Mode (onehsot falling). Use espresso SP/tuning params.
-    if (!g_SteamModeOSF) {
+    if (g_SteamModeOSF) {
       g_BoilerSp = g_BoilerSpEsp;
       g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
     }
