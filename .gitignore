@@ -4,3 +4,4 @@ include
 lib
 test
 .travis.yml
+arduino-plotter-listener-windows32
