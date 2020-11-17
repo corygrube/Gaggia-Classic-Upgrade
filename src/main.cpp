@@ -25,11 +25,11 @@ double g_BoilerSp = 0;                   // Boiler water temperature setpoint (D
 double g_BoilerSpDb = 1.5;               // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
 double g_BoilerSpSteam = 255;            // Boiler water temperature setpoint, steam (DegF)
-double g_BoilerKpEsp = 10;                // Boiler water temperature PID P gain, espresso
-double g_BoilerKiEsp = 0.3;                // Boiler water temperature PID I gain, espresso
+double g_BoilerKpEsp = 10;               // Boiler water temperature PID P gain, espresso
+double g_BoilerKiEsp = 0.3;              // Boiler water temperature PID I gain, espresso
 double g_BoilerKdEsp = 1;                // Boiler water temperature PID D gain, espresso
-double g_BoilerKpSteam = 10;              // Boiler water temperature PID P gain, steam
-double g_BoilerKiSteam = 0.3;              // Boiler water temperature PID I gain, steam
+double g_BoilerKpSteam = 10;             // Boiler water temperature PID P gain, steam
+double g_BoilerKiSteam = 0.3;            // Boiler water temperature PID I gain, steam
 double g_BoilerKdSteam = 1;              // Boiler water temperature PID D gain, steam
 
 bool g_SteamMode = 0;                    // Machine Steam Mode (0=espresso mode, 1=steam mode)
@@ -247,36 +247,61 @@ void boilerTempControl() {
   // PID compute logic - handles timing of PID execution.
   // Always called, even when in manual.
   g_BoilerPid.Compute();
+}
 
-  // Light Mode control
-  // Set Light Mode to 0 if there is a hardware fault.
+
+/*lightModeSet()********************************************************
+ * Sets light mode based on steam mode, temperature, and setpoint.
+ * 0=Fault
+ * 1=Heating
+ * 2=Ready
+ * 3=Too hot
+ ***********************************************************************/
+void lightModeSet() {
+  // Mode 0 - Hardware fault
   if (g_BoilerTempFault) {
     g_LightMode = 0;
   }
-  // Set Light Mode to 1 if temp is less than (SP - SP Deadband) (too cold)
-  else if (g_BoilerTemp < (g_BoilerSp - g_BoilerSpDb)) {
-    g_LightMode = 1;
+  
+  // Espresso mode lights
+  else if (!g_SteamMode) {
+    // Mode 1 - Temp < (SP - DB) (too cold)
+    if (g_BoilerTemp < (g_BoilerSp - g_BoilerSpDb)) {
+      g_LightMode = 1;
+    }
+    // Mode 3 - Temp > (SP + DB) (too hot)
+    else if (g_BoilerTemp > (g_BoilerSp + g_BoilerSpDb)) {
+      g_LightMode = 3;
+    }
+    // Mode 2 - (SP - DB) < Temp < (SP + DB)
+    else {
+      g_LightMode = 2;
+    }
   }
-  // Set Light Mode to 3 if temp is greater than (SP + SP Deadband) (too hot)
-  else if (g_BoilerTemp > (g_BoilerSp + g_BoilerSpDb)) {
-    g_LightMode = 3;
-  }
-  // Set Light Mode to 2 if temp is somewhere in between (correct temp)
-  else {
-    g_LightMode = 2;
+
+  // Steam mode lights
+  else if (g_SteamMode) {
+    // Mode 1 - Temp < (SP - DB) (too cold)
+    if (g_BoilerTemp < (g_BoilerSp - g_BoilerSpDb)) {
+      g_LightMode = 1;
+    }
+    // Mode 2 - Temp > (SP - DB) (hot enough)
+    else {
+      g_LightMode = 2;
+    }
   }
 }
 
 
-/* lightControl()**************************************************************
+/* lightModeControl()**************************************************************
  * Controls machine indicator light depending on machine status (light mode). 
  * 0=Fault - triple blink, pause
  * 1=Heating - On for 1/2 sec, off for 1/2 sec
  * 2=Ready - Steady on
  * 3=Too hot - On for 3/4 sec, off for 1/4 sec
  * Else=Fault
- ******************************************************************************/
-void lightControl() {
+ **********************************************************************************/
+void lightModeControl() {
   // 1=Heating
   if (g_LightMode == 1) {
     // Equal on/off blinking over the course of a second
@@ -446,7 +471,8 @@ void loop() {
 
   // Processing/Calculations
   boilerTempControl();
-  lightControl();
+  lightModeSet();
+  lightModeControl();
 
   // Monitoring
   g_BoilerCmdPct = g_BoilerCmd / 255 * 100;     // Scaling from PWM 0-255 to 0-100% for Diagnostics
