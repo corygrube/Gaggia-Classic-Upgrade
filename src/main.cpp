@@ -39,6 +39,13 @@ bool g_SteamModeRawPrev;                 // value of Steam Mode pin on previous 
 unsigned long g_SteamModeDbPrev;         // Previous time Steam Mode pin was toggled (ms)
 unsigned long g_SteamModeDbCfg = 50;     // Configured debounce time for toggle (ms)
 
+bool g_PumpStat = 0;                     // Pump Run Status (0=Stopped, 1=Running)
+bool g_PumpStatOSR = 0;                  // Pump run status Rising Oneshot
+bool g_PumpStatOSF = 0;                  // pump run status Falling Oneshot
+bool g_PumpStatRawPrev;                  // value of pump run status pin on previous scan (1=Running)
+unsigned long g_PumpStatDbPrev;          // Previous time pump run status pin was toggled (ms)
+unsigned long g_PumpStatDbCfg = 50;      // Configured debounce time for toggle (ms)
+
 bool g_LightCmd = 0;                     // Indicator light SSR digital command (0=Off 1=On)
 int g_LightMode = 0;                     // Indicator light mode (0=Fault, 1=Heating, 2=Ready, 3=Too hot)
 
@@ -212,6 +219,55 @@ void steamModeInp() {
   }
 }
 
+/* pumpStatInp()*************************************************************
+ * Debounce function to read the state of the pump run status.
+ * Sets miscellaneous oneshot bits for use elsewhere in program.
+ ******************************************************************************/
+void pumpStatInp() {
+  // Reset Pump Stat oneshot bits
+  g_PumpStatOSR = 0;
+  g_PumpStatOSF = 0;
+  
+  // Read the state of the switch into a local variable:
+  bool pumpStatRaw = digitalRead(pin_PumpStat);
+
+  // Check to see if the pump just started
+  // (i.e. the input went from LOW to HIGH), and you've waited long enough
+  // since the last press to ignore any noise:
+
+  // If the switch changed, due to noise or actually starting:
+  if (pumpStatRaw != g_PumpStatRawPrev) {
+    // Mark the current time as the the most recent status change.
+    g_PumpStatDbPrev = millis();
+  }
+
+  // Check if pumpStatRaw is different than g_PumpStat.
+  // If so, check to see if debounce timer setpoint has been exceeded, meaning
+  // that pump has been in the current state for more ms than the Debounce SP
+  if (pumpStatRaw != g_PumpStat) {
+    if ((millis() - g_PumpStatDbPrev) > g_PumpStatDbCfg) {
+      g_PumpStat = pumpStatRaw;
+      
+      // Set Oneshot rising/falling bits based on how the debounced value changed
+      if (g_PumpStat == 1) {
+        g_PumpStatOSR = 1;
+      }
+      else {
+        g_PumpStatOSF = 1;
+      }
+    }
+  }
+  // Save the pumpStatRaw as g_pumpStatRawPrev for next scan. 
+  // This will be used to determine when the pump changes state.
+  g_PumpStatRawPrev = pumpStatRaw;
+
+  // On program first scan, oneshot to off.
+  if (g_FirstScan) {
+    g_PumpStat = 0;
+    g_PumpStatOSR = 0;
+    g_PumpStatOSF = 1;
+  }
+}
 
 /* boilerTempControl()***************************************************
  * Sets PID Temp SP based on boiler mode oneshot.
@@ -221,32 +277,32 @@ void steamModeInp() {
 void boilerTempControl() {
   // If a fault exists, place PID into manual (0) and set output to 0.
   // Set Light Mode to 0 to indicate fault.
+  // Return to loop()
   if (g_BoilerTempFault) {
     g_BoilerPid.SetMode(0);
     g_BoilerCmd = 0;
+    return;
   }
   
-  // If there are no faults, run normal PID logic.
-  else  {
-    // Place PID into Auto (1)
-    g_BoilerPid.SetMode(1);
+  // Set PID to auto
+  g_BoilerPid.SetMode(1);
 
-    // Steam Mode (oneshot rising). Use steam SP/tuning params.
-    if (g_SteamModeOSR) {
-      g_BoilerSp = g_BoilerSpSteam;
-      g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
-    }
-      
-    // Espresso Mode (onehsot falling). Use espresso SP/tuning params.
-    if (g_SteamModeOSF) {
-      g_BoilerSp = g_BoilerSpEsp;
-      g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
-    }
+  // Steam Mode (oneshot rising). Use steam SP/tuning params.
+  if (g_SteamModeOSR) {
+    g_BoilerSp = g_BoilerSpSteam;
+    g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
+  }
+    
+  // Espresso Mode (onehsot falling). Use espresso SP/tuning params.
+  if (g_SteamModeOSF) {
+    g_BoilerSp = g_BoilerSpEsp;
+    g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
   }
 
-  // PID compute logic - handles timing of PID execution.
-  // Always called, even when in manual.
-  g_BoilerPid.Compute();
+  // Pump Running Rising Oneshot. Manually push output to 255 (100%).
+  if (g_PumpStatOSR) {
+    g_BoilerCmd = 255;
+  }
 }
 
 
@@ -467,10 +523,12 @@ void loop() {
   // Inputs/Reads
   boilerTempInp();
   steamModeInp();
+  pumpStatInp();
   serialInp();
 
   // Processing/Calculations
   boilerTempControl();
+  g_BoilerPid.Compute();    // Always called, even when in manual.
   lightModeSet();
   lightModeControl();
 
