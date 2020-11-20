@@ -22,15 +22,18 @@ bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fa
 double g_BoilerCmd = 0;                  // Boiler heater SSR PWM command (0-255)
 double g_BoilerCmdPct = 0;               // Boiler heater SSR command percent (0-100%)
 double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
-double g_BoilerSpDb = 1.5;               // Boiler water temperature setpoint deadband (DegF)
+double g_BoilerSpDb = 0.5;                 // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
 double g_BoilerSpSteam = 255;            // Boiler water temperature setpoint, steam (DegF)
 double g_BoilerKpEsp = 10;               // Boiler water temperature PID P gain, espresso
 double g_BoilerKiEsp = 0.3;              // Boiler water temperature PID I gain, espresso
-double g_BoilerKdEsp = 1;                // Boiler water temperature PID D gain, espresso
+double g_BoilerKdEsp = 1.5;              // Boiler water temperature PID D gain, espresso
+double g_BoilerKpEspActive = 20;         // Boiler water temperature PID P gain, espresso active (aggresive)
+double g_BoilerKiEspActive = 5;          // Boiler water temperature PID I gain, espresso active (aggresive)
+double g_BoilerKdEspActive = 1.5;        // Boiler water temperature PID D gain, espresso active (aggresive)
 double g_BoilerKpSteam = 10;             // Boiler water temperature PID P gain, steam
 double g_BoilerKiSteam = 0.3;            // Boiler water temperature PID I gain, steam
-double g_BoilerKdSteam = 1;              // Boiler water temperature PID D gain, steam
+double g_BoilerKdSteam = 0.5;            // Boiler water temperature PID D gain, steam
 
 bool g_SteamMode = 0;                    // Machine Steam Mode (0=espresso mode, 1=steam mode)
 bool g_SteamModeOSR = 0;                 // Machine Steam Mode Rising Oneshot
@@ -265,7 +268,7 @@ void pumpStatInp() {
   if (g_FirstScan) {
     g_PumpStat = 0;
     g_PumpStatOSR = 0;
-    g_PumpStatOSF = 1;
+    g_PumpStatOSF = 0;
   }
 }
 
@@ -299,9 +302,25 @@ void boilerTempControl() {
     g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
   }
 
-  // Pump Running Rising Oneshot. Manually push output to 255 (100%).
-  if (g_PumpStatOSR) {
-    g_BoilerCmd = 255;
+  // Pump OS operations - only used when in espresso mode.
+  if (!g_SteamMode) {
+    // Pump Running Rising Oneshot. Manually push output to 191 (75%).
+    // Set aggressive PID tuning
+    if (g_PumpStatOSR) {
+      g_BoilerPid.SetMode(0);
+      g_BoilerCmd = 191;
+      g_BoilerPid.SetMode(1);
+      g_BoilerPid.SetTunings(g_BoilerKpEspActive, g_BoilerKiEspActive, g_BoilerKdEspActive);
+    }
+
+    // Pump Running Falling Oneshot. Manually push output to 76 (30%).
+    // Set standard PID tuning
+    if (g_PumpStatOSF) {
+      g_BoilerPid.SetMode(0);
+      g_BoilerCmd = 76;
+      g_BoilerPid.SetMode(1);
+      g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
+    }
   }
 }
 
@@ -351,11 +370,6 @@ void lightModeSet() {
 
 /* lightModeControl()**************************************************************
  * Controls machine indicator light depending on machine status (light mode). 
- * 0=Fault - triple blink, pause
- * 1=Heating - On for 1/2 sec, off for 1/2 sec
- * 2=Ready - Steady on
- * 3=Too hot - On for 3/4 sec, off for 1/4 sec
- * Else=Fault
  **********************************************************************************/
 void lightModeControl() {
   // 1=Heating
@@ -377,8 +391,8 @@ void lightModeControl() {
 
   // 3=Too hot
   else if (g_LightMode == 3) {
-    // On for 3/4 sec, off for 1/4 sec
-    if (g_1000Msec < 750) {
+    // Double blink, repeated once per second. Blinks are 1/12 of a second.
+    if (int(g_1000Msec / 83.333) % 2 == 0 && g_1000Msec <=250) {
       g_LightCmd = true;
     }
     else {
@@ -388,14 +402,8 @@ void lightModeControl() {
 
   // 0=Fault (or unknown mode)
   else {
-    // Triple blink, repeated once per second. Blinks are 1/12 of a second.
-    if (0 <= g_1000Msec && g_1000Msec <= 83) {
-      g_LightCmd = true;
-    }
-    else if (167 <= g_1000Msec && g_1000Msec <= 250) {
-      g_LightCmd = true;
-    }
-    else if (333 <= g_1000Msec && g_1000Msec <= 417) {
+    // Continuous blinking. Blinks are 1/12 of a second.
+    if (int(g_1000Msec / 83.333) % 2 == 0) {
       g_LightCmd = true;
     }
     else {
