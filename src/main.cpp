@@ -13,6 +13,7 @@ const int pin_CS = 10;            // MAX31865 SPI CS pin
 const int pin_SDI = 11;           // MAX31865 SPI SDI pin
 const int pin_SDO = 12;           // MAX31865 SPI SDO pin
 const int pin_CLK = 13;           // MAX31865 SPI CLK pin
+const int pin_SetpointInp = 18;   // Temperature setpoint input pin (potentiometer)
 
 
 /* Global Variables */
@@ -169,6 +170,18 @@ void boilerTempInp() {
 }
 
 
+/* setpointInp()********************************************************************
+ * Reads espresso temp setpoint from potentiometer. 
+ ***********************************************************************************/
+void setpointInp() {
+  int input = analogRead(pin_SetpointInp);
+  double setpointMin = 195;
+  double setpointMax = 205;
+
+  g_BoilerSpEsp = (setpointMax - setpointMin) * input / 1024 + setpointMin;
+}
+
+
 /* steamModeInp()*************************************************************
  * Debounce function to read the state of the steam mode switch.
  * Sets miscellaneous oneshot bits for use elsewhere in program.
@@ -290,15 +303,21 @@ void boilerTempControl() {
   // Set PID to auto
   g_BoilerPid.SetMode(1);
 
-  // Steam Mode (oneshot rising). Use steam SP/tuning params.
-  if (g_SteamModeOSR) {
+  // Choose SP based on steam mode
+  if (g_SteamMode) {
     g_BoilerSp = g_BoilerSpSteam;
+  }
+  else {
+    g_BoilerSp = g_BoilerSpEsp;
+  }
+
+  // Steam Mode (oneshot rising). Use steam tuning params.
+  if (g_SteamModeOSR) {
     g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
   }
     
-  // Espresso Mode (onehsot falling). Use espresso SP/tuning params.
+  // Espresso Mode (onehsot falling). Use espresso tuning params.
   if (g_SteamModeOSF) {
-    g_BoilerSp = g_BoilerSpEsp;
     g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
   }
 
@@ -530,9 +549,11 @@ void loop() {
   
   // Inputs/Reads
   boilerTempInp();
+  setpointInp();
   steamModeInp();
   pumpStatInp();
   serialInp();
+
 
   // Processing/Calculations
   boilerTempControl();
