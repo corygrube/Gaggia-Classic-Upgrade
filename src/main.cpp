@@ -175,10 +175,11 @@ void boilerTempInp() {
  ***********************************************************************************/
 void setpointInp() {
   int input = analogRead(pin_SetpointInp);
-  double setpointMin = 195;
+  double setpointMin = 175;
   double setpointMax = 205;
 
-  g_BoilerSpEsp = (setpointMax - setpointMin) * input / 1024 + setpointMin;
+  // 1024 at min temp
+  g_BoilerSpEsp = setpointMax - (setpointMax - setpointMin) * input / 1024;
 }
 
 
