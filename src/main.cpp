@@ -23,9 +23,9 @@ bool g_BoilerTempFault;                  // Boiler water temperature fault (1=Fa
 double g_BoilerCmd = 0;                  // Boiler heater SSR PWM command (0-255)
 double g_BoilerCmdPct = 0;               // Boiler heater SSR command percent (0-100%)
 double g_BoilerSp = 0;                   // Boiler water temperature setpoint (DegF)
-double g_BoilerSpDb = 0.5;                 // Boiler water temperature setpoint deadband (DegF)
+double g_BoilerSpDb = 0.5;               // Boiler water temperature setpoint deadband (DegF)
 double g_BoilerSpEsp = 205;              // Boiler water temperature setpoint, espresso (DegF)
-double g_BoilerSpSteam = 255;            // Boiler water temperature setpoint, steam (DegF)
+double g_BoilerSpSteam = 250;            // Boiler water temperature setpoint, steam (DegF)
 double g_BoilerKpEsp = 10;               // Boiler water temperature PID P gain, espresso
 double g_BoilerKiEsp = 0.3;              // Boiler water temperature PID I gain, espresso
 double g_BoilerKdEsp = 1.5;              // Boiler water temperature PID D gain, espresso
@@ -35,6 +35,8 @@ double g_BoilerKdEspActive = 1.5;        // Boiler water temperature PID D gain,
 double g_BoilerKpSteam = 10;             // Boiler water temperature PID P gain, steam
 double g_BoilerKiSteam = 0.3;            // Boiler water temperature PID I gain, steam
 double g_BoilerKdSteam = 0.5;            // Boiler water temperature PID D gain, steam
+double g_BoilerCvLimSteam = 127;         // Boiler PID output limit, steam
+double g_BoilerCvLimEsp = 255;           // Boiler PID output limit, espresso
 
 bool g_SteamMode = 0;                    // Machine Steam Mode (0=espresso mode, 1=steam mode)
 bool g_SteamModeOSR = 0;                 // Machine Steam Mode Rising Oneshot
@@ -178,7 +180,7 @@ void setpointInp() {
   double setpointMin = 175;
   double setpointMax = 205;
 
-  // 1024 at min temp
+  // 1024 at min temp, 0 at max temp
   g_BoilerSpEsp = setpointMax - (setpointMax - setpointMin) * input / 1024;
 }
 
@@ -312,14 +314,16 @@ void boilerTempControl() {
     g_BoilerSp = g_BoilerSpEsp;
   }
 
-  // Steam Mode (oneshot rising). Use steam tuning params.
+  // Steam Mode (oneshot rising). Use steam tuning params/output limits.
   if (g_SteamModeOSR) {
     g_BoilerPid.SetTunings(g_BoilerKpSteam, g_BoilerKiSteam, g_BoilerKdSteam);
+    g_BoilerPid.SetOutputLimits(0, g_BoilerCvLimSteam);
   }
     
-  // Espresso Mode (onehsot falling). Use espresso tuning params.
+  // Espresso Mode (onehsot falling). Use espresso tuning params/output limits.
   if (g_SteamModeOSF) {
     g_BoilerPid.SetTunings(g_BoilerKpEsp, g_BoilerKiEsp, g_BoilerKdEsp);
+    g_BoilerPid.SetOutputLimits(0, g_BoilerCvLimEsp);
   }
 
   // Pump OS operations - only used when in espresso mode.
